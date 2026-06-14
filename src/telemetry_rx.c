@@ -102,11 +102,13 @@ static void decode_frame(telemetry_parser_t *p, telemetry_state_t *ts)
 {
     const uint8_t *pl = &p->buf[MAVLINK_HEADER_LEN];
 
+    /* Any valid MAVLink packet from the ROV keeps the connection alive */
+    ts->last_heartbeat_ms = time_ms_local();
+    ts->connected = true;
+
     switch (p->msg_id) {
 
     case MSG_HEARTBEAT:
-        ts->last_heartbeat_ms = time_ms_local();
-        ts->connected = true;
         /* base_mode byte is at payload offset 6; bit 7 = armed */
         if (p->payload_len >= 9)
             ts->armed = (pl[6] & 128) != 0;
