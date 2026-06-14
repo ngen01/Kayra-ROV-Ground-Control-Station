@@ -93,7 +93,7 @@ static uint64_t time_ms_local(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }
 
 /* ── Decode a parsed frame into telemetry state ── */
@@ -239,8 +239,8 @@ void telemetry_rx_feed(telemetry_parser_t *p, telemetry_state_t *ts,
 
 void telemetry_rx_tick(telemetry_state_t *ts, uint64_t now_ms)
 {
-    /* Mark disconnected if no heartbeat for 3 seconds */
     if (ts->last_heartbeat_ms > 0 &&
+        now_ms > ts->last_heartbeat_ms &&
         (now_ms - ts->last_heartbeat_ms) > 3000) {
         ts->connected = false;
     }

@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
     printf("╚══════════════════════════════════════════════╝\n\n");
 
     /* ── UDP socket (non-blocking) ── */
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    int sock = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (sock < 0)
     {
         perror("[main] socket");
@@ -515,7 +515,14 @@ int main(int argc, char *argv[])
         }
 
         /* ── 8. Rate limit ── */
-        usleep(MAIN_LOOP_US);
+        uint64_t loop_end = time_ms();
+        if (loop_end - now > 100) {
+            printf("\n[DEBUG] ROV Main Loop blocked for %llu ms!\n", (unsigned long long)(loop_end - now));
+        }
+        
+        uint64_t elapsed_us = (loop_end - now) * 1000;
+        if (elapsed_us < MAIN_LOOP_US)
+            usleep(MAIN_LOOP_US - elapsed_us);
     }
 
     /* ── Shutdown ── */

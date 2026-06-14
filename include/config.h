@@ -8,7 +8,7 @@
 #define CONFIG_H
 
 /* ---- Transport defaults ---- */
-#define DEFAULT_TARGET_IP       "192.168.2.2"   /* Raspberry Pi on ROV   */
+#define DEFAULT_TARGET_IP       "192.168.1.2"   /* Raspberry Pi on ROV   */
 #define DEFAULT_UDP_PORT        14550           /* MAVLink standard port */
 #define DEFAULT_LISTEN_PORT     14551           /* local port for telemetry rx */
 #define DEFAULT_SERIAL_DEVICE   "/dev/ttyUSB0"

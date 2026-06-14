@@ -372,8 +372,16 @@ int main(int argc, char *argv[])
                 ;
         }
 
-        /* 8 — rate-limit */
-        usleep(LOOP_PERIOD_MS * 1000);
+        uint64_t loop_end = time_ms();
+        if (loop_end - now > 100) {
+            printf("\n[DEBUG] GCS Main Loop blocked for %llu ms!\n", (unsigned long long)(loop_end - now));
+        }
+
+        /* 8 — rate-limit to ~100 Hz (10 ms) */
+        uint64_t elapsed = time_ms() - now;
+        if (elapsed < LOOP_PERIOD_MS) {
+            usleep((LOOP_PERIOD_MS - elapsed) * 1000);
+        }
     }
 
     /* ---- shutdown ---- */

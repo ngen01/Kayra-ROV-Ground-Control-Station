@@ -29,6 +29,8 @@ pid_t camera_start(const char *dest_ip, int dest_port,
     }
 
     if (pid == 0) {
+        /* Set process group so we can kill the entire pipeline later */
+        setpgid(0, 0);
         /* Child process — exec rpicam-vid piped to gst-launch via sh -c */
         char cmd[512];
         snprintf(cmd, sizeof(cmd),
