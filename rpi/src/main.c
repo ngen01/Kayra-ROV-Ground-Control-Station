@@ -293,6 +293,14 @@ int main(int argc, char *argv[])
                 inet_ntop(AF_INET, &sender_addr.sin_addr, ip_str, sizeof(ip_str));
                 printf("\n[GCS] Auto-detected GCS IP: %s (telemetry → %s:%d)\n",
                        ip_str, ip_str, gcs_port);
+
+                /* Also redirect camera stream to the new IP */
+                if (use_camera)
+                {
+                    if (cam_pid > 0)
+                        camera_stop(cam_pid);
+                    cam_pid = camera_start(ip_str, CAMERA_PORT, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS);
+                }
             }
 
             for (ssize_t i = 0; i < n; i++)
