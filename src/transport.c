@@ -7,19 +7,39 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <errno.h>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#include <io.h>
+#ifndef F_GETFL
+#define F_GETFL 3
+#endif
+#ifndef F_SETFL
+#define F_SETFL 4
+#endif
+#ifndef O_NONBLOCK
+#define O_NONBLOCK 04000
+#endif
+typedef int socklen_t;
+#else
+#include <unistd.h>
+#include <fcntl.h>
 /* UDP */
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
 /* Serial */
 #include <termios.h>
+#endif
 
 #include "transport.h"
+
+#ifdef _WIN32
+static int wsa_initialized = 0;
+#endif
 
 /* ================================================================== */
 /*  UDP                                                               */
@@ -27,6 +47,17 @@
 
 static int udp_init(transport_t *t)
 {
+#ifdef _WIN32
+    if (!wsa_initialized) {
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2,2), &wsa) != 0) {
+            fprintf(stderr, "[transport] WSAStartup failed.\n");
+            return -1;
+        }
+        wsa_initialized = 1;
+    }
+#endif
+
     t->fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (t->fd < 0) {
         perror("[transport] socket()");
@@ -34,10 +65,20 @@ static int udp_init(transport_t *t)
     }
 
     /* Non-blocking */
+#ifdef _WIN32
+    u_long mode = 1;
+    if (ioctlsocket(t->fd, FIONBIO, &mode) != 0) {
+        fprintf(stderr, "[transport] ioctlsocket non-block failed\n");
+#else
     int flags = fcntl(t->fd, F_GETFL, 0);
     if (flags < 0 || fcntl(t->fd, F_SETFL, flags | O_NONBLOCK) < 0) {
         perror("[transport] fcntl non-block");
+#endif
+#ifdef _WIN32
+        closesocket(t->fd);
+#else
         close(t->fd);
+#endif
         t->fd = -1;
         return -1;
     }
@@ -52,7 +93,11 @@ static int udp_init(transport_t *t)
 
         if (bind(t->fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) < 0) {
             perror("[transport] bind()");
+#ifdef _WIN32
+            closesocket(t->fd);
+#else
             close(t->fd);
+#endif
             t->fd = -1;
             return -1;
         }
@@ -77,9 +122,13 @@ static int udp_send(transport_t *t, const uint8_t *buf, size_t len)
         return -1;
     }
 
-    ssize_t n = sendto(t->fd, buf, len, 0,
+    ssize_t n = sendto(t->fd, (const char*)buf, len, 0,
                        (struct sockaddr *)&addr, sizeof(addr));
+#ifdef _WIN32
+    if (n < 0 && WSAGetLastError() != WSAEWOULDBLOCK) {
+#else
     if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+#endif
         perror("[transport] sendto()");
         return -1;
     }
@@ -90,6 +139,7 @@ static int udp_send(transport_t *t, const uint8_t *buf, size_t len)
 /*  Serial  (UART over USB — /dev/ttyUSB0 or /dev/ttyACM0)           */
 /* ================================================================== */
 
+#ifndef _WIN32
 static speed_t baud_to_speed(int baud)
 {
     switch (baud) {
@@ -106,9 +156,14 @@ static speed_t baud_to_speed(int baud)
         return B115200;
     }
 }
+#endif
 
 static int serial_init(transport_t *t)
 {
+#ifdef _WIN32
+    fprintf(stderr, "[transport] Serial transport not fully implemented on Windows.\n");
+    return -1;
+#else
     t->fd = open(t->device, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (t->fd < 0) {
         perror("[transport] open(serial)");
@@ -153,16 +208,22 @@ static int serial_init(transport_t *t)
     printf("[transport] Serial → %s @ %d baud  (fd %d)\n",
            t->device, t->baud_rate, t->fd);
     return 0;
+#endif
 }
 
 static int serial_send(transport_t *t, const uint8_t *buf, size_t len)
 {
+#ifdef _WIN32
+    (void)t; (void)buf; (void)len;
+    return -1;
+#else
     ssize_t n = write(t->fd, buf, len);
     if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
         perror("[transport] write(serial)");
         return -1;
     }
     return (int)n;
+#endif
 }
 
 /* ================================================================== */
@@ -171,10 +232,15 @@ static int serial_send(transport_t *t, const uint8_t *buf, size_t len)
 
 static int udp_recv(transport_t *t, uint8_t *buf, size_t maxlen)
 {
-    ssize_t n = recvfrom(t->fd, buf, maxlen, MSG_DONTWAIT, NULL, NULL);
+    ssize_t n = recvfrom(t->fd, (char*)buf, maxlen, 0, NULL, NULL);
     if (n < 0) {
+#ifdef _WIN32
+        if (WSAGetLastError() == WSAEWOULDBLOCK)
+            return 0;
+#else
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             return 0;           /* nothing available */
+#endif
         return -1;
     }
     return (int)n;
@@ -182,6 +248,10 @@ static int udp_recv(transport_t *t, uint8_t *buf, size_t maxlen)
 
 static int serial_recv(transport_t *t, uint8_t *buf, size_t maxlen)
 {
+#ifdef _WIN32
+    (void)t; (void)buf; (void)maxlen;
+    return -1;
+#else
     ssize_t n = read(t->fd, buf, maxlen);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -189,6 +259,7 @@ static int serial_recv(transport_t *t, uint8_t *buf, size_t maxlen)
         return -1;
     }
     return (int)n;
+#endif
 }
 
 /* ================================================================== */
@@ -225,7 +296,11 @@ int transport_recv(transport_t *t, uint8_t *buf, size_t maxlen)
 void transport_close(transport_t *t)
 {
     if (t->fd >= 0) {
+#ifdef _WIN32
+        closesocket(t->fd);
+#else
         close(t->fd);
+#endif
         t->fd = -1;
     }
     printf("[transport] Closed.\n");
