@@ -89,6 +89,23 @@ void joystick_update(joystick_state_t *state)
                 g_calibrated = 0;  /* re-calibrate center on reconnect */
             }
         }
+        if (!g_js) {
+            /* attempt reconnect if no joystick */
+            static uint64_t last_try = 0;
+            uint64_t now = SDL_GetTicks64();
+            if (now - last_try > 3000) {
+                /* 
+                 * WARNING: Calling joystick_init() / SDL_NumJoysticks() continuously 
+                 * when no gamepad is plugged in causes a ~3000ms freeze on some Linux 
+                 * kernels (due to udev polling). This blocks the entire GCS loop!
+                 * 
+                 * Disabled auto-reconnect for now. The user must connect the gamepad 
+                 * BEFORE starting the software.
+                 */
+                // joystick_init();
+                last_try = now;
+            }
+        }
         if (!state->connected) {
             for (int i = 0; i < JOYSTICK_MAX_AXES; i++)
                 state->axes[i] = 0.0f;
